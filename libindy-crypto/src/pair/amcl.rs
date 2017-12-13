@@ -46,6 +46,8 @@ pub struct PointG1 {
 }
 
 impl PointG1 {
+    const BYTES_REPR_SIZE: usize = MODBYTES * 4;
+
     /// Creates new random PointG1
     pub fn new() -> Result<PointG1, IndyCryptoError> {
         // generate random point from the group G1
@@ -125,12 +127,16 @@ impl PointG1 {
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, IndyCryptoError> {
         let mut r = self.point;
-        let mut vec = vec![0; MODBYTES * 4];
+        let mut vec = vec![0u8; Self::BYTES_REPR_SIZE];
         r.tobytes(&mut vec);
         Ok(vec)
     }
 
     pub fn from_bytes(b: &[u8]) -> Result<PointG1, IndyCryptoError> {
+        if b.len() != Self::BYTES_REPR_SIZE {
+            return Err(IndyCryptoError::InvalidStructure(
+                "Invalid len of bytes representation".to_string()));
+        }
         Ok(
             PointG1 {
                 point: ECP::frombytes(b)
@@ -189,6 +195,8 @@ pub struct PointG2 {
 }
 
 impl PointG2 {
+    const BYTES_REPR_SIZE: usize = MODBYTES * 4;
+
     /// Creates new random PointG2
     pub fn new() -> Result<PointG2, IndyCryptoError> {
         let point_xa = BIG::new_ints(&CURVE_PXA);
@@ -261,12 +269,16 @@ impl PointG2 {
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, IndyCryptoError> {
         let mut point = self.point;
-        let mut vec = vec![0; MODBYTES * 4];
+        let mut vec = vec![0u8; Self::BYTES_REPR_SIZE];
         point.tobytes(&mut vec);
         Ok(vec)
     }
 
     pub fn from_bytes(b: &[u8]) -> Result<PointG2, IndyCryptoError> {
+        if b.len() != Self::BYTES_REPR_SIZE {
+            return Err(IndyCryptoError::InvalidStructure(
+                "Invalid len of bytes representation".to_string()));
+        }
         Ok(
             PointG2 {
                 point: ECP2::frombytes(b)
@@ -311,6 +323,8 @@ pub struct GroupOrderElement {
 }
 
 impl GroupOrderElement {
+    const BYTES_REPR_SIZE: usize = MODBYTES;
+
     pub fn new() -> Result<GroupOrderElement, IndyCryptoError> {
         // returns random element in 0, ..., GroupOrder-1
         Ok(GroupOrderElement {
@@ -320,9 +334,13 @@ impl GroupOrderElement {
 
     pub fn new_from_seed(seed: &[u8]) -> Result<GroupOrderElement, IndyCryptoError> {
         // returns random element in 0, ..., GroupOrder-1
+        if seed.len() != MODBYTES {
+            return Err(IndyCryptoError::InvalidStructure(
+                format!("Invalid len of seed: expected {}, actual {}", MODBYTES, seed.len())));
+        }
         let mut rng = RAND::new();
         rng.clean();
-        rng.seed(MODBYTES, seed);
+        rng.seed(seed.len(), seed);
 
         Ok(GroupOrderElement {
             bn: BIG::randomnum(&BIG::new_ints(&CURVE_ORDER), &mut rng)
@@ -407,12 +425,16 @@ impl GroupOrderElement {
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, IndyCryptoError> {
         let mut bn = self.bn;
-        let mut vec: [u8; MODBYTES] = [0; MODBYTES];
+        let mut vec = vec![0u8; Self::BYTES_REPR_SIZE];
         bn.tobytes(&mut vec);
-        Ok(vec.to_vec())
+        Ok(vec)
     }
 
     pub fn from_bytes(b: &[u8]) -> Result<GroupOrderElement, IndyCryptoError> {
+        if b.len() > Self::BYTES_REPR_SIZE {
+            return Err(IndyCryptoError::InvalidStructure(
+                "Invalid len of bytes representation".to_string()));
+        }
         let mut vec = b.to_vec();
         let len = vec.len();
         if len < MODBYTES {
@@ -469,6 +491,7 @@ pub struct Pair {
 }
 
 impl Pair {
+    const BYTES_REPR_SIZE: usize = MODBYTES * 16;
     /// e(PointG1, PointG2)
     pub fn pair(p: &PointG1, q: &PointG2) -> Result<Pair, IndyCryptoError> {
         let mut p_new = *p;
@@ -523,7 +546,7 @@ impl Pair {
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, IndyCryptoError> {
         let mut r = self.pair;
-        let mut vec = vec![0; MODBYTES * 16];
+        let mut vec = vec![0u8; Self::BYTES_REPR_SIZE];
         r.tobytes(&mut vec);
         Ok(vec)
     }
@@ -562,6 +585,14 @@ impl<'a> Deserialize<'a> for Pair {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use errors::ToErrorCode;
+    use ffi::ErrorCode;
+
+    #[test]
+    fn group_order_element_new_from_seed_works_for_invalid_seed_len() {
+        let err = GroupOrderElement::new_from_seed(&[0, 1, 2]).unwrap_err();
+        assert_eq!(err.to_error_code(), ErrorCode::CommonInvalidStructure);
+    }
 
     #[test]
     fn pairing_definition_bilinearity() {
